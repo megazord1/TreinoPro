@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MotoExpress - Premium</title>
+    <!-- Bootstrap & Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Leaflet & Geocoder (Autocomplete) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    
+    <style>
+        :root { --bg-dark: #0f172a; --card-bg: rgba(30, 41, 59, 0.8); --primary-blue: #3b82f6; --text-main: #f8fafc; --text-dim: #94a3b8; }
+        body { background-color: var(--bg-dark); color: var(--text-main); font-family: 'Inter', sans-serif; min-height: 100vh; margin: 0; }
+        .auth-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .glass-card { background: var(--card-bg); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px; padding: 2rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        .form-control, .form-select { background-color: #1e293b !important; border: 1px solid #334155 !important; color: #ffffff !important; padding: 12px; }
+        .form-control::placeholder { color: var(--text-dim) !important; }
+        .btn-primary-custom { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border: none; padding: 14px; font-weight: bold; border-radius: 12px; width: 100%; color: white !important; transition: 0.3s; }
+        .pedido-card { background: rgba(255, 255, 255, 0.05); border-radius: 15px; padding: 15px; margin-bottom: 15px; border-left: 5px solid var(--primary-blue); }
+        #map { height: 300px; width: 100%; border-radius: 15px; margin-top: 15px; border: 1px solid rgba(255,255,255,0.1); }
+        .hidden { display: none !important; }
+        #mainApp { display: none; }
+        .cursor-pointer { cursor: pointer; }
+
+        /* Estilização da lista de sugestões de endereço */
+        .autocomplete-suggestions {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            position: absolute;
+            z-index: 1000;
+            width: 90%;
+        }
+        .suggestion-item {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #334155;
+            font-size: 0.9rem;
+        }
+        .suggestion-item:hover { background: #334155; }
+    </style>
+</head>
+<body>
+
+<div id="authSection" class="container auth-container">
+    <div class="glass-card w-100" style="max-width: 400px;">
+        <h2 class="fw-bold text-primary text-center mb-2">Moto<span class="text-white">Express</span></h2>
+        <div id="formCadastro">
+            <h5 class="text-center mb-3 text-dim">Criar Conta</h5>
+            <input type="text" id="regNome" class="form-control mb-2" placeholder="Nome Completo">
+            <input type="email" id="regEmail" class="form-control mb-2" placeholder="E-mail">
+            <input type="password" id="regSenha" class="form-control mb-2" placeholder="Senha (6+ dígitos)">
+            <select id="regTipo" class="form-select mb-4">
+                <option value="cliente">👤 Sou Cliente</option>
+                <option value="motoboy">🏍️ Sou Motoboy</option>
+            </select>
+            <button id="btnRegistrar" class="btn-primary-custom mb-3">CADASTRAR</button>
+            <p class="text-center small text-dim">Já tem conta? <span class="text-primary cursor-pointer fw-bold" onclick="toggleAuth()">Entrar aqui</span></p>
+        </div>
+        <div id="formLogin" class="hidden">
+            <h5 class="text-center mb-3 text-dim">Acessar Sistema</h5>
+            <input type="email" id="loginEmail" class="form-control mb-2" placeholder="Seu E-mail">
+            <input type="password" id="loginSenha" class="form-control mb-4" placeholder="Sua Senha">
+            <button id="btnLoginAction" class="btn-primary-custom mb-3">ENTRAR</button>
+            <p class="text-center small text-dim">Novo por aqui? <span class="text-primary cursor-pointer fw-bold" onclick="toggleAuth()">Criar conta</span></p>
+        </div>
+    </div>
+</div>
+
+<div id="mainApp" class="container py-4">
+    <header class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h3 class="fw-bold text-primary m-0">Moto<span class="text-white">Express</span></h3>
+            <p id="boasVindas" class="small text-dim m-0"></p>
+        </div>
+        <button id="btnLogout" class="btn btn-sm btn-outline-danger">Sair</button>
+    </header>
+
+    <div class="row">
+        <div id="areaCliente" class="col-12 col-md-6 mx-auto hidden">
+            <div class="glass-card mb-4 position-relative">
+                <h5 class="mb-3 text-primary"><i class="bi bi-geo-alt-fill me-2"></i>Pedir Motoboy</h5>
+                
+                <!-- Input Origem com sugestão -->
+                <div class="position-relative mb-2">
+                    <input type="text" id="origem" class="form-control" placeholder="Endereço de Coleta" autocomplete="off">
+                    <div id="sugestoesOrigem" class="autocomplete-suggestions hidden"></div>
+                </div>
+
+                <!-- Input Destino com sugestão -->
+                <div class="position-relative mb-2">
+                    <input type="text" id="destino" class="form-control" placeholder="Endereço de Entrega" autocomplete="off">
+                    <div id="sugestoesDestino" class="autocomplete-suggestions hidden"></div>
+                </div>
+
+                <button id="btnSolicitar" class="btn-primary-custom mt-2">SOLICITAR AGORA</button>
+            </div>
+            <div id="statusPedidoCliente"></div>
+            <div id="mapContainer" class="hidden">
+                <p class="text-primary fw-bold mb-1 mt-3 small"><i class="bi bi-geo-fill"></i> LOCALIZAÇÃO EM TEMPO REAL:</p>
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <div id="areaMotoboy" class="col-12 col-md-8 mx-auto hidden">
+            <div id="minhaCorridaAtiva"></div>
+            <h5 class="mb-3 text-warning"><i class="bi bi-list-stars me-2"></i>Pedidos Disponíveis</h5>
+            <div id="listaPedidos"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Leaflet & Geocoder JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, getDoc, collection, addDoc, query, where, onSnapshot, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyBsnN_KrorIrJD3faVOxqFD3SfUILr7XUY",
+        authDomain: "motoexpress-887ba.firebaseapp.com",
+        projectId: "motoexpress-887ba",
+        storageBucket: "motoexpress-887ba.appspot.com",
+        messagingSenderId: "931221356023",
+        appId: "1:931221356023:web:7f6f5e4d3c2b1a"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const geocoder = L.Control.Geocoder.nominatim();
+
+    let map, marker, watchID;
+
+    // --- LÓGICA DE AUTOCOMPLETE (SENSACIONAL!) ---
+    function setupAutocomplete(inputId, suggestionsId) {
+        const input = document.getElementById(inputId);
+        const divSugestoes = document.getElementById(suggestionsId);
+
+        input.addEventListener('input', (e) => {
+            const query = e.target.value;
+            if (query.length < 3) {
+                divSugestoes.classList.add('hidden');
+                return;
+            }
+
+            geocoder.geocode(query, (results) => {
+                divSugestoes.innerHTML = "";
+                if (results.length > 0) {
+                    divSugestoes.classList.remove('hidden');
+                    results.forEach(res => {
+                        const item = document.createElement('div');
+                        item.className = "suggestion-item";
+                        item.innerText = res.name;
+                        item.onclick = () => {
+                            input.value = res.name;
+                            divSugestoes.classList.add('hidden');
+                        };
+                        divSugestoes.appendChild(item);
+                    });
+                }
+            });
+        });
+
+        // Fecha sugestões ao clicar fora
+        document.addEventListener('click', (e) => {
+            if (e.target !== input) divSugestoes.classList.add('hidden');
+        });
+    }
+
+    setupAutocomplete('origem', 'sugestoesOrigem');
+    setupAutocomplete('destino', 'sugestoesDestino');
+
+    // --- RESTANTE DAS FUNÇÕES (LOGIN/FIREBASE) ---
+    window.toggleAuth = () => {
+        document.getElementById('formCadastro').classList.toggle('hidden');
+        document.getElementById('formLogin').classList.toggle('hidden');
+    };
+
+    document.getElementById('btnRegistrar').addEventListener('click', async () => {
+        const nome = document.getElementById('regNome').value;
+        const email = document.getElementById('regEmail').value;
+        const senha = document.getElementById('regSenha').value;
+        const tipo = document.getElementById('regTipo').value;
+        try {
+            const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
+            await setDoc(doc(db, "usuarios", userCredential.user.uid), { nome, email, tipo });
+        } catch (e) { alert(e.message); }
+    });
+
+    document.getElementById('btnLoginAction').addEventListener('click', async () => {
+        const email = document.getElementById('loginEmail').value;
+        const senha = document.getElementById('loginSenha').value;
+        try { await signInWithEmailAndPassword(auth, email, senha); } catch (e) { alert("Erro no login."); }
+    });
+
+    document.getElementById('btnLogout').addEventListener('click', () => {
+        if(watchID) navigator.geolocation.clearWatch(watchID);
+        signOut(auth);
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+        if (user) {
+            const userDoc = await getDoc(doc(db, "usuarios", user.uid));
+            const perfil = userDoc.data();
+            document.getElementById('boasVindas').innerText = `Olá, ${perfil.nome}!`;
+            document.getElementById('authSection').classList.add('hidden');
+            document.getElementById('mainApp').style.display = 'block';
+            if(perfil.tipo === 'cliente') {
+                document.getElementById('areaCliente').classList.remove('hidden');
+                monitorarMeusPedidos(user.uid);
+            } else {
+                document.getElementById('areaMotoboy').classList.remove('hidden');
+                carregarPedidosParaMotoboy();
+                monitorarMinhaCorrida(user.uid);
+                iniciarRastreioMotoboy();
+            }
+        } else {
+            document.getElementById('authSection').classList.remove('hidden');
+            document.getElementById('mainApp').style.display = 'none';
+        }
+    });
+
+    // --- GPS E MONITORAMENTO ---
+    function iniciarRastreioMotoboy() {
+        if ("geolocation" in navigator) {
+            watchID = navigator.geolocation.watchPosition(async (pos) => {
+                await updateDoc(doc(db, "usuarios", auth.currentUser.uid), {
+                    lat: pos.coords.latitude, lng: pos.coords.longitude, ultimaAtualizacao: serverTimestamp()
+                });
+            }, null, { enableHighAccuracy: true });
+        }
+    }
+
+    function monitorarMeusPedidos(clienteId) {
+        const q = query(collection(db, "pedidos"), where("clienteId", "==", clienteId));
+        onSnapshot(q, async (snapshot) => {
+            const ativos = snapshot.docs.filter(d => d.data().status !== 'finalizado');
+            const container = document.getElementById('statusPedidoCliente');
+            container.innerHTML = ativos.length ? "<h6 class='mt-4 text-dim'>Status:</h6>" : "";
+            
+            for (const docSnap of ativos) {
+                const p = docSnap.data();
+                let msg = p.status === 'pendente' ? "Procurando um motoboy..." : "Motoboy a caminho!";
+                if(p.status === 'aceito') {
+                    const mDoc = await getDoc(doc(db, "usuarios", p.motoboyId));
+                    msg = `Motoboy <b>${mDoc.data().nome}</b> a caminho!`;
+                }
+                container.innerHTML += `<div class="pedido-card">${msg}<br><small>${p.origem} ➔ ${p.destino}</small></div>`;
+            }
+            const atual = ativos.find(d => d.data().status === 'aceito');
+            if(atual) { document.getElementById('mapContainer').classList.remove('hidden'); carregarMapa(atual.data().motoboyId); }
+            else document.getElementById('mapContainer').classList.add('hidden');
+        });
+    }
+
+    function carregarMapa(motoboyId) {
+        if (!map) {
+            map = L.map('map').setView([0, 0], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            marker = L.marker([0, 0]).addTo(map);
+        }
+        onSnapshot(doc(db, "usuarios", motoboyId), (d) => {
+            if(d.data()?.lat) {
+                const pos = [d.data().lat, d.data().lng];
+                marker.setLatLng(pos).bindPopup(`<b>${d.data().nome}</b>`).openPopup();
+                map.panTo(pos);
+            }
+        });
+    }
+
+    document.getElementById('btnSolicitar').addEventListener('click', async () => {
+        const o = document.getElementById('origem').value;
+        const d = document.getElementById('destino').value;
+        if(o && d) await addDoc(collection(db, "pedidos"), { origem: o, destino: d, status: "pendente", clienteId: auth.currentUser.uid, data: serverTimestamp() });
+        document.getElementById('origem').value = ""; document.getElementById('destino').value = "";
+    });
+
+    function carregarPedidosParaMotoboy() {
+        onSnapshot(query(collection(db, "pedidos"), where("status", "==", "pendente")), (snap) => {
+            const l = document.getElementById('listaPedidos'); l.innerHTML = "";
+            snap.forEach(d => {
+                l.innerHTML += `<div class="pedido-card d-flex justify-content-between align-items-center">
+                    <div>De: ${d.data().origem}<br>Para: ${d.data().destino}</div>
+                    <button class="btn btn-success btn-sm" onclick="aceitar('${d.id}')">ACEITAR</button>
+                </div>`;
+            });
+        });
+    }
+
+    function monitorarMinhaCorrida(motoboyId) {
+        onSnapshot(query(collection(db, "pedidos"), where("motoboyId", "==", motoboyId), where("status", "==", "aceito")), (snap) => {
+            const c = document.getElementById('minhaCorridaAtiva'); c.innerHTML = "";
+            snap.forEach(d => {
+                c.innerHTML = `<div class="glass-card mb-4 border-success"><h6>Entrega em curso</h6><p>${d.data().destino}</p><button class="btn btn-success w-100" onclick="finalizar('${d.id}')">FINALIZAR</button></div>`;
+            });
+        });
+    }
+
+    window.aceitar = (id) => updateDoc(doc(db, "pedidos", id), { status: "aceito", motoboyId: auth.currentUser.uid });
+    window.finalizar = (id) => confirm("Finalizar?") && updateDoc(doc(db, "pedidos", id), { status: "finalizado" });
+</script>
+</body>
+</html>
